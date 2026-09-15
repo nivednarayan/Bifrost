@@ -1,5 +1,6 @@
 import asyncio
 from core.L4.algorithms import RoundRobin, LeastConnections, IPHash
+from core.L4.syn_flood import SYNFloodDetector
 
 class L4Proxy:
     def __init__(self, backends: list[tuple[str, int]], algorithm: str = "round_robin"):
@@ -9,21 +10,34 @@ class L4Proxy:
             "ip_hash": IPHash(backends)
         }
         self.algorithm = algorithms[algorithm]
+        self.detector = SYNFloodDetector(threshold=3, block_duration=60)
 
     async def handle_client(self, reader, writer):
         client_ip = writer.get_extra_info('peername')[0]
-        backend_host, backend_port = self.algorithm.next_backend(client_ip)
+        
+        if self.detector.is_blocked(client_ip):
+            print(f"Blocked IP: {client_ip}")
+            writer.close()
+            return
 
+        self.detector.connection_received(client_ip)
+        print(f"Half-open count for {client_ip}: {self.detector.half_open[client_ip]}")
+
+        backend_host, backend_port = self.algorithm.next_backend(client_ip)
         self.algorithm.increment((backend_host, backend_port))
 
         try:
             backend_reader, backend_writer = await asyncio.open_connection(backend_host, backend_port)
-
+        
             async def forward(src, dst):
+                first_read = True
                 while True:
                     data = await src.read(1024)
                     if not data:
                         break
+                    if first_read and src is reader:
+                        self.detector.connection_completed(client_ip)
+                        first_read = False
                     dst.write(data)
                     await dst.drain()
                 dst.close()
