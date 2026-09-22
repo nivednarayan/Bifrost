@@ -3,14 +3,14 @@ from core.L4.algorithms import RoundRobin, LeastConnections, IPHash
 from core.L4.syn_flood import SYNFloodDetector
 
 class L4Proxy:
-    def __init__(self, backends: list[tuple[str, int]], algorithm: str = "round_robin"):
+    def __init__(self, backends: list[tuple[str, int]], algorithm: str = "round_robin", syn_flood_threshold: int = 10, syn_flood_block_duration: int = 60):
         algorithms = {
             "round_robin": RoundRobin(backends),
             "least_connections": LeastConnections(backends),
             "ip_hash": IPHash(backends)
         }
         self.algorithm = algorithms[algorithm]
-        self.detector = SYNFloodDetector(threshold=3, block_duration=60)
+        self.detector = SYNFloodDetector(threshold=syn_flood_threshold, block_duration=syn_flood_block_duration)
 
     async def handle_client(self, reader, writer):
         client_ip = writer.get_extra_info('peername')[0]

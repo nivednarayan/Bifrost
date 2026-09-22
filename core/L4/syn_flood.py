@@ -2,7 +2,7 @@ import asyncio
 from collections import defaultdict
 
 class SYNFloodDetector:
-    def __init__(self, threshold: int = 10, block_duration: int = 60):
+    def __init__(self, threshold: int, block_duration: int):
         self.half_open = defaultdict(int)
         self.blocked = {}
         self.threshold = threshold
