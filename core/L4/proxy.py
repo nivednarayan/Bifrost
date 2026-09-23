@@ -51,6 +51,6 @@ class L4Proxy:
             writer.close()
 
     async def start(self, host: str, port: int):
-        server = await asyncio.start_server(self.handle_client, host, port)
+        server = await asyncio.start_server(self.handle_client, host, port, reuse_port=True)
         async with server:
             await server.serve_forever()
