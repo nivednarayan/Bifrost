@@ -9,6 +9,8 @@ class Config:
     algorithm: str
     syn_flood_threshold: int
     syn_flood_block_duration: int
+    route: list[dict]
+    l7_port: int
 
 def load_config(path: str) -> Config:
     try:
@@ -20,6 +22,8 @@ def load_config(path: str) -> Config:
             algorithm=data["algorithm"],
             syn_flood_threshold=data["syn_flood_threshold"],
             syn_flood_block_duration=data["syn_flood_block_duration"],
+            route=data["routes"],
+            l7_port=data["l7_port"],
         )
     except yaml.YAMLError as err:
         print(err)
