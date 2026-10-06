@@ -30,9 +30,7 @@ class L7Proxy:
             request_time = time.time()
             request = parse(raw)
             
-            if is_bot_by_headers(request) or \
-               is_bot_by_cadence(client_ip) or \
-               is_bot_by_connection_timing(connection_time, request_time):
+            if is_bot_by_headers(request) or is_bot_by_cadence(client_ip) or is_bot_by_connection_timing(connection_time, request_time):
                 writer.write(b"HTTP/1.1 403 Forbidden\r\n\r\n")
                 await writer.drain()
                 return
@@ -43,7 +41,7 @@ class L7Proxy:
                 await writer.drain()
                 return
             
-            backend_host, backend_port = self.pools[request.path].select(client_ip)
+            backend_host, backend_port = self.pools[request.path].next_backend(client_ip)
             b_reader, b_writer = await asyncio.open_connection(backend_host, backend_port)
             b_writer.write(raw)
             await b_writer.drain()
