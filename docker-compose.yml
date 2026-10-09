@@ -1,0 +1,38 @@
+services:
+  proxy:
+    build:
+      context: .
+      dockerfile: docker/proxy/Dockerfile
+    ports:
+      - "9000:9000"
+      - "8000:8000"
+    volumes:
+      - ./config.yaml:/app/config.yaml:z
+    depends_on:
+      - backend1
+      - backend2
+      - backend3
+
+  backend1:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    command: python backend.py backend1 9000
+    expose:
+      - "9000"
+
+  backend2:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    command: python backend.py backend2 9000
+    expose:
+      - "9000"
+
+  backend3:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    command: python backend.py backend3 9000
+    expose:
+      - "9000"

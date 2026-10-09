@@ -1,15 +1,17 @@
 import asyncio
 import sys
 
-port = int(sys.argv[1])
+backend = str(sys.argv[1])
+port = int(sys.argv[2])
 
 async def handle_client(reader, writer):
     while True:
         data = await reader.read(1024)
         if not data:
             break
-        response = f"Backend:{port} : {data.decode()}".encode()
-        writer.write(response)
+        body = f"{backend}:{port} : {data.decode()}"
+        response = f"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {len(body)}\r\n\r\n{body}"
+        writer.write(response.encode())
         await writer.drain()
     writer.close()
 

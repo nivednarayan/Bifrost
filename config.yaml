@@ -1,9 +1,11 @@
 listen_port: 9000
 backends:
-  - host: "127.0.0.1"
-    port: 9001
-  - host: "127.0.0.1"
-    port: 9002
+  - host: backend1
+    port: 9000
+  - host: backend2
+    port: 9000
+  - host: backend3
+    port: 9000
 algorithm: "round_robin"
 syn_flood_threshold: 10
 syn_flood_block_duration: 6
@@ -13,11 +15,11 @@ l7_port: 8000
 routes:
   - path: "/api/users"
     backends:
-      - host: "127.0.0.1"
-        port: 9001
-      - host: "127.0.0.1"
-        port: 9002
+      - host: backend1
+        port: 9000
+      - host: backend2
+        port: 9000
   - path: "/api/payments"
     backends:
-      - host: "127.0.0.1"
-        port: 9003
+      - host: backend3
+        port: 9000
