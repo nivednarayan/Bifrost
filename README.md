@@ -58,6 +58,8 @@ Master Process
 
 ---
 
+![Architecture](architecture.png)
+
 ## Project Structure
 
 ```
