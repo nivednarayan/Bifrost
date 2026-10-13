@@ -34,7 +34,7 @@ class L7Proxy:
     async def handle_client(self, reader, writer):
         connection_time = time.time()
         client_ip = writer.get_extra_info('peername')[0]
-        b_reader, b_writer, backend_host, backend_port = None, None, None, None
+        b_reader, b_writer, backend_host, backend_port, route = None, None, None, None, None
 
         try:
             raw = await reader.read(4096)
@@ -56,6 +56,7 @@ class L7Proxy:
                 return
 
             backend_host, backend_port = self.pools[route["path"]].next_backend(client_ip)
+            self.pools[route["path"]].increment((backend_host, backend_port))
 
             if self.circuit_breakers[(backend_host, backend_port)].is_open():
                 writer.write(b"HTTP/1.1 503 Service Unavailable\r\n\r\n")
@@ -76,7 +77,8 @@ class L7Proxy:
                 await writer.drain()
 
         finally:
-            
+            if backend_host and backend_port and route:
+                self.pools[route["path"]].decrement((backend_host, backend_port))
             if b_writer is not None:
                 self.connection_pools[(backend_host, backend_port)].release(b_reader, b_writer, time.time())
             writer.close()
