@@ -34,7 +34,7 @@ class L7Proxy:
     async def handle_client(self, reader, writer):
         connection_time = time.time()
         client_ip = writer.get_extra_info('peername')[0]
-        b_reader, b_writer, backend_host, backend_port, route = None, None, None, None, None
+        b_reader, b_writer, backend_host, backend_port, route, response_complete = None, None, None, None, None, False
 
         try:
             raw = await reader.read(4096)
@@ -67,10 +67,38 @@ class L7Proxy:
                 b_reader, b_writer = await self.connection_pools[(backend_host, backend_port)].acquire()
                 b_writer.write(raw)
                 await b_writer.drain()
-                response = await b_reader.read(4096)
+                
+                # read headers
+                header_data = b""
+                while b"\r\n\r\n" not in header_data:
+                    chunk = await b_reader.read(4096)
+                    if not chunk:
+                        raise Exception("Backend closed connection")
+                    header_data += chunk
+
+                # split headers and any body bytes that came with them
+                header_part, body_part = header_data.split(b"\r\n\r\n", 1)
+
+                # parse content-length
+                content_length = 0
+                for line in header_part.split(b"\r\n")[1:]:
+                    if line.lower().startswith(b"content-length:"):
+                        content_length = int(line.split(b":")[1].strip())
+                        break
+
+                # read remaining body
+                while len(body_part) < content_length:
+                    chunk = await b_reader.read(4096)
+                    if not chunk:
+                        break
+                    body_part += chunk
+
+                response = header_part + b"\r\n\r\n" + body_part
+                response_complete = True
                 self.circuit_breakers[(backend_host, backend_port)].record_success()
                 writer.write(response)
                 await writer.drain()
+
             except Exception:
                 self.circuit_breakers[(backend_host, backend_port)].record_failure()
                 writer.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
@@ -80,8 +108,10 @@ class L7Proxy:
             if backend_host and backend_port and route:
                 self.pools[route["path"]].decrement((backend_host, backend_port))
             if b_writer is not None:
-                self.connection_pools[(backend_host, backend_port)].release(b_reader, b_writer, time.time())
-            writer.close()
+                if response_complete:
+                    self.connection_pools[(backend_host, backend_port)].release(b_reader, b_writer, time.time())
+                else:
+                    b_writer.close()
 
     async def start(self, host: str, port: int):
         server = await asyncio.start_server(self.handle_client, host, port, reuse_port=True)
