@@ -49,13 +49,13 @@ class L7Proxy:
                 await writer.drain()
                 return
 
-            backends = route_request(request, self.routes)
-            if not backends:
+            route = route_request(request, self.routes)
+            if not route:
                 writer.write(b"HTTP/1.1 404 Not Found\r\n\r\n")
                 await writer.drain()
                 return
-            
-            backend_host, backend_port = self.pools[request.path].next_backend(client_ip)
+
+            backend_host, backend_port = self.pools[route["path"]].next_backend(client_ip)
 
             if self.circuit_breakers[(backend_host, backend_port)].is_open():
                 writer.write(b"HTTP/1.1 503 Service Unavailable\r\n\r\n")

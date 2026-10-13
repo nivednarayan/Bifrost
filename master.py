@@ -10,9 +10,13 @@ workers = []
 
 def handle_sighup(signum, frame):
     global config
-    config = load_config("config.yaml")
-    for p in workers:
-        p.terminate()
+    new_config = load_config("config.yaml")
+    if new_config:
+        config = new_config
+        for p in workers:
+            p.terminate()
+    else:
+        print("Config reload failed — keeping existing config")
 
 def handle_sigterm(signum, frame): 
     for p in workers: 

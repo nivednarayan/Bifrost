@@ -25,6 +25,8 @@ class L4Proxy:
 
         backend_host, backend_port = self.algorithm.next_backend(client_ip)
         self.algorithm.increment((backend_host, backend_port))
+        
+        backend_writer = None
 
         try:
             backend_reader, backend_writer = await asyncio.open_connection(backend_host, backend_port)
@@ -36,7 +38,6 @@ class L4Proxy:
                     if not data:
                         break
                     if first_read and src is reader:
-                        self.detector.connection_completed(client_ip)
                         first_read = False
                     dst.write(data)
                     await dst.drain()
@@ -47,7 +48,10 @@ class L4Proxy:
                 forward(backend_reader, writer)
             )
         finally:
+            self.detector.connection_completed(client_ip)
             self.algorithm.decrement((backend_host, backend_port))
+            if backend_writer:
+                backend_writer.close()
             writer.close()
 
     async def start(self, host: str, port: int):
