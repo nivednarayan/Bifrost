@@ -23,3 +23,6 @@ routes:
     backends:
       - host: backend3
         port: 9000
+
+bot_detection: false
+max_pool_size: 100

@@ -8,7 +8,8 @@ from pool.connection_pool import ConnectionPool
 from pool.health import HealthChecker, CircuitBreaker
 
 class L7Proxy:
-    def __init__(self, routes: list[dict], algorithm: str = "round_robin"):
+    def __init__(self, config, routes: list[dict], algorithm: str = "round_robin"):
+        self.config = config
         self.routes = routes
         self.pools = {}
         for route in routes:
@@ -25,7 +26,7 @@ class L7Proxy:
         for route in routes:
             for b in route["backends"]:
                 key = (b["host"], b["port"])
-                self.connection_pools[key] = ConnectionPool(b["host"], b["port"], max_pool_size=10, ttl=60)
+                self.connection_pools[key] = ConnectionPool(b["host"], b["port"], max_pool_size=config.max_pool_size, ttl=60)
                 self.circuit_breakers[key] = CircuitBreaker()
 
         self.health_checker = HealthChecker(list(self.circuit_breakers.keys()))
@@ -43,7 +44,7 @@ class L7Proxy:
             request_time = time.time()
             request = parse(raw)
 
-            if is_bot_by_headers(request) or is_bot_by_cadence(client_ip): # or is_bot_by_connection_timing(connection_time, request_time):
+            if self.config.bot_detection and (is_bot_by_headers(request) or is_bot_by_cadence(client_ip)): # or is_bot_by_connection_timing(connection_time, request_time):
                 writer.write(b"HTTP/1.1 403 Forbidden\r\n\r\n")
                 await writer.drain()
                 return

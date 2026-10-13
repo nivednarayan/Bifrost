@@ -5,7 +5,7 @@ from config import Config
 
 async def _run(config : Config):
     proxyL4 = L4Proxy(config.backends, config.algorithm, config.syn_flood_threshold, config.syn_flood_block_duration)
-    proxyL7 = L7Proxy(config.route, config.algorithm)
+    proxyL7 = L7Proxy(config, config.route, config.algorithm)
     await asyncio.gather(proxyL4.start('0.0.0.0', config.listen_port), proxyL7.start('0.0.0.0', config.l7_port))
 
 def worker_proxy(config: Config):

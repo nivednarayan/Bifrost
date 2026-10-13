@@ -11,6 +11,8 @@ class Config:
     syn_flood_block_duration: int
     route: list[dict]
     l7_port: int
+    bot_detection: bool
+    max_pool_size: int
 
 def load_config(path: str) -> Config:
     try:
@@ -24,6 +26,8 @@ def load_config(path: str) -> Config:
             syn_flood_block_duration=data["syn_flood_block_duration"],
             route=data["routes"],
             l7_port=data["l7_port"],
+            bot_detection=data.get("bot_detection", True),
+            max_pool_size=data["max_pool_size"]
         )
     except yaml.YAMLError as err:
         print(err)
