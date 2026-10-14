@@ -32,9 +32,10 @@ class L7Proxy:
         self.health_checker = HealthChecker(list(self.circuit_breakers.keys()))
 
     async def handle_client(self, reader, writer):
+        peername = writer.get_extra_info('peername')
+        client_ip = peername[0] if peername else "unknown"
         connection_time = time.time()
-        client_ip = writer.get_extra_info('peername')[0]
-        b_reader, b_writer, backend_host, backend_port, route, response_complete = None, None, None, None, None, False
+        b_reader, b_writer, backend_host, backend_port, route, response_complete, created_at = None, None, None, None, None, False, None
 
         try:
             raw = await reader.read(4096)
@@ -64,7 +65,8 @@ class L7Proxy:
                 return
 
             try:
-                b_reader, b_writer = await self.connection_pools[(backend_host, backend_port)].acquire()
+                b_reader, b_writer, created_at = await self.connection_pools[(backend_host, backend_port)].acquire()
+                raw = raw.replace(b"\r\n\r\n", b"\r\nConnection: close\r\n\r\n", 1)
                 b_writer.write(raw)
                 await b_writer.drain()
                 
@@ -109,7 +111,7 @@ class L7Proxy:
                 self.pools[route["path"]].decrement((backend_host, backend_port))
             if b_writer is not None:
                 if response_complete:
-                    self.connection_pools[(backend_host, backend_port)].release(b_reader, b_writer, time.time())
+                    self.connection_pools[(backend_host, backend_port)].release(b_reader, b_writer, created_at)
                 else:
                     b_writer.close()
 

@@ -13,12 +13,12 @@ class ConnectionPool:
         if self.pool:
             reader, writer, created_at = self.pool.pop()
             if (time.time() - created_at) < self.ttl:
-                return reader, writer
+                return reader, writer, created_at
             else:
                 writer.close()
 
         reader, writer = await asyncio.open_connection(self.host, self.port)
-        return reader, writer
+        return reader, writer, time.time()
 
     def release(self, reader, writer, created_at):
         if (time.time() - created_at) > self.ttl or len(self.pool) >= self.max_pool_size:
