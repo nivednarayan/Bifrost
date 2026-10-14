@@ -66,7 +66,6 @@ class L7Proxy:
 
             try:
                 b_reader, b_writer, created_at = await self.connection_pools[(backend_host, backend_port)].acquire()
-                raw = raw.replace(b"\r\n\r\n", b"\r\nConnection: close\r\n\r\n", 1)
                 b_writer.write(raw)
                 await b_writer.drain()
                 
@@ -83,10 +82,13 @@ class L7Proxy:
 
                 # parse content-length
                 content_length = 0
+                backend_closing = False
                 for line in header_part.split(b"\r\n")[1:]:
-                    if line.lower().startswith(b"content-length:"):
+                    lowered = line.lower()
+                    if lowered.startswith(b"content-length:"):
                         content_length = int(line.split(b":")[1].strip())
-                        break
+                    elif lowered.startswith(b"connection:") and b"close" in lowered:
+                        backend_closing = True
 
                 # read remaining body
                 while len(body_part) < content_length:
@@ -96,7 +98,7 @@ class L7Proxy:
                     body_part += chunk
 
                 response = header_part + b"\r\n\r\n" + body_part
-                response_complete = True
+                response_complete = not backend_closing and len(body_part) >= content_length
                 self.circuit_breakers[(backend_host, backend_port)].record_success()
                 writer.write(response)
                 await writer.drain()

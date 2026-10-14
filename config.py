@@ -29,6 +29,6 @@ def load_config(path: str) -> Config:
             bot_detection=data.get("bot_detection", True),
             max_pool_size=data["max_pool_size"]
         )
-    except yaml.YAMLError as err:
-        print(err)
+    except Exception as err:
+        print(f"Config error: {err!r}", flush=True)
         return None

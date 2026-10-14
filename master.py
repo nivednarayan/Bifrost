@@ -27,6 +27,9 @@ signal.signal(signal.SIGHUP, handle_sighup)
 signal.signal(signal.SIGTERM, handle_sigterm)
 
 if __name__ == '__main__':
+    if config is None:
+        sys.exit(1)
+
     for _ in range(cpu_count()):
         p = Process(target=worker_proxy, args=(config,))
         p.start()

@@ -10,12 +10,11 @@ class ConnectionPool:
         self.ttl = ttl
 
     async def acquire(self):
-        if self.pool:
+        while self.pool:
             reader, writer, created_at = self.pool.pop()
-            if (time.time() - created_at) < self.ttl:
+            if (time.time() - created_at) < self.ttl and not reader.at_eof() and not writer.is_closing():
                 return reader, writer, created_at
-            else:
-                writer.close()
+            writer.close()
 
         reader, writer = await asyncio.open_connection(self.host, self.port)
         return reader, writer, time.time()

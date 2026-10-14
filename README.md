@@ -1,6 +1,6 @@
 # Bifrost
 
-A L4 + L7 load balancer built from scratch in Python using raw sockets and asyncio. Named after the Norse bridge between worlds.
+An L4 + L7 load balancer built from scratch in Python using raw sockets and asyncio. It is a learning project, not yet production-ready (see Known issues below). Named after the Norse bridge between worlds.
 
 Built as a deep-dive into networking internals — TCP, socket programming, Layer 4 vs Layer 7, connection pooling, circuit breakers — the kind of stuff that comes up in SRE interviews.
 
@@ -11,7 +11,7 @@ Built as a deep-dive into networking internals — TCP, socket programming, Laye
 ### Layer 4
 - Async TCP proxy with bidirectional forwarding
 - Round robin, least connections, IP hash load balancing
-- SYN flood detection — tracks half-open connections per IP, blocks if threshold exceeded
+- Per-IP connection limiter (named SYN flood detection in the code) — counts open connections per IP and blocks the IP temporarily if the threshold is exceeded. It runs in user space after the TCP handshake, so it is not kernel-level SYN flood protection
 - SO_REUSEPORT — kernel distributes connections across workers
 
 ### Layer 7
@@ -29,7 +29,7 @@ Built as a deep-dive into networking internals — TCP, socket programming, Laye
 ```
 Master Process
 ├── Spawns N workers (N = CPU cores)
-├── Config reload without dropping connections (SIGHUP)
+├── Config reload on SIGHUP (validated first, workers restarted; in-flight connections are dropped)
 ├── Respawns crashed workers
 └── Workers (SO_REUSEPORT — kernel distributes connections)
     ├── asyncio event loop
@@ -64,8 +64,7 @@ Master Process
 
 ```
 Bifrost/
-├── main.py                 # entry point
-├── master.py               # worker lifecycle, config reload, respawn
+├── master.py               # entry point: worker lifecycle, config reload, respawn
 ├── worker.py               # asyncio event loop per core
 ├── config.py               # YAML config parsing
 ├── backend.py              # test backend server
@@ -122,11 +121,13 @@ python backend.py backend2 9002
 python master.py
 ```
 
-### Config reload (no dropped connections)
+### Config reload
 
 ```bash
 kill -HUP <master_pid>
 ```
+
+The new config is validated first; if it is invalid the old config is kept. Valid configs restart all workers, so in-flight connections are dropped.
 
 ---
 
@@ -138,7 +139,7 @@ kill -HUP <master_pid>
 listen_port: 9000        # L4 port
 l7_port: 8000            # L7 port
 algorithm: round_robin   # round_robin | least_connections | ip_hash
-max_pool_size: 50        # connections per backend per worker
+max_pool_size: 100       # idle connections kept per backend per worker
 bot_detection: false     # header fingerprinting + cadence check
 
 backends:
@@ -150,7 +151,7 @@ backends:
     port: 9000
 
 syn_flood_threshold: 10
-syn_flood_block_duration: 60
+syn_flood_block_duration: 6   # seconds
 
 routes:
   - path: /api/users
@@ -181,22 +182,27 @@ Tested with k6 — ramping arrival rate from 500 to 4000 iterations/s against Bi
 
 Nginx was excluded from the final comparison — it hit worker/connection limits under load that skewed results. Tuning it properly is a separate exercise.
 
-**Throughput is identical.** HAProxy is ~2.4x faster on average latency. The gap is Python HTTP parsing overhead on every request — HAProxy is C with no per-request parsing at this level. For an I/O bound proxy in Python, asyncio closes most of the gap that the language would otherwise create.
+Throughput is identical because k6 uses an arrival-rate executor: both proxies were offered the same fixed request rate and neither dropped requests, so Req/sec only shows that the offered load was served, not a throughput limit. Latency is the meaningful comparison. HAProxy ran with its default settings (TCP mode, no HTTP parsing), so it is not a like-for-like HTTP comparison.
 
-One real bug found and fixed during benchmarking: `max_pool_size=10` caused pool exhaustion under load, forcing new TCP handshakes on every overflow request. Increasing it to 50 dropped p95 from 24ms to 1.26ms.
+HAProxy is ~2.4x faster on average latency. The gap is Python HTTP parsing overhead on every request — HAProxy is C with no per-request parsing at this level. For an I/O bound proxy in Python, asyncio closes most of the gap that the language would otherwise create.
+
+One real bug found and fixed during benchmarking: `max_pool_size=10` caused pool exhaustion under load, forcing new TCP handshakes on every overflow request. Increasing it to 50 dropped p95 from 24ms to 1.26ms (`config.yaml` now uses 100).
 
 ---
 
 ## Known issues / planned work
 
-From a full code review — in priority order:
+Fixed from the code review: route-prefix lookup (`/api/users/1` works), response read by `Content-Length`, pool TTL and stale-connection checks, validated config reload, per-IP counter released on disconnect, L7 `least_connections` counters, no 502s from re-pooling closed connections.
 
-- L7 proxy uses `request.path` as the pool key but pools are keyed by route prefix — exact path match only, `/api/users/1` causes a KeyError
-- Pool poisoning — response is read with a single `read(4096)`, leftover bytes from large responses stay in the socket and corrupt the next request on that connection
-- Config reload with a broken config kills all workers and enters a crash loop — should validate before applying
-- SYN flood detector never decrements for clients that connect and close without sending data — legitimate IPs get blocked
-- `least_connections` at L7 never calls increment/decrement — every counter stays 0, effectively round robin
-- `HealthChecker` is never started — no active health checking at runtime
-- No timeouts anywhere — a hung backend ties up connections forever
-- HTTP parser crashes on binary bodies and malformed request lines
+Still open — in priority order:
+
+- No timeouts anywhere — a hung backend or slow client ties up connections forever
+- `HealthChecker` is never started — no active health checking at runtime; no failover to another backend when one fails
+- HTTP parser crashes on binary bodies and malformed request lines, and header names are case-sensitive (bot detection can reject lowercase headers)
+- Request is read with a single `read(4096)` — large or split requests and chunked bodies are not handled
+- Backend 5xx responses do not count as circuit breaker failures
+- Reload restarts workers abruptly instead of draining connections
+- L4 proxy does not support TCP half-close
+- Round robin, circuit breaker, pool and rate-limit state are per worker process, not shared
+- No tests or CI
 
