@@ -1,6 +1,6 @@
 # Bifrost
 
-A production-grade L4 + L7 load balancer built from scratch in Python using raw sockets and asyncio. Named after the Norse bridge between worlds.
+A L4 + L7 load balancer built from scratch in Python using raw sockets and asyncio. Named after the Norse bridge between worlds.
 
 Built as a deep-dive into networking internals — TCP, socket programming, Layer 4 vs Layer 7, connection pooling, circuit breakers — the kind of stuff that comes up in SRE interviews.
 
